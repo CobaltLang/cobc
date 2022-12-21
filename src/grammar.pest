@@ -1,0 +1,56 @@
+// Useful for handling EOI
+file = {SOI ~ program ~ EOI }
+
+program = { (stmnt ~ ";")* ~ expr? }
+
+stmnt = { declStmnt | assignStmnt }
+    declStmnt = { ident ~ ":" ~ ident? ~ "=" ~ expr }
+    assignStmnt = { ident ~ "=" ~ expr }
+
+// Segment of code that results in a value
+expr = { atom ~ (binOp ~ atom)* }
+
+atom = _{ unaryOp? ~ primary }
+
+primary = _{ constant | ident | "(" ~ expr ~ ")" }
+
+binOp = _{ add | sub | mul | div }
+    add = { "+" }
+    sub = { "-" }
+    mul = { "*" }
+    div = { "/" }
+
+unaryOp = _{ neg }
+    neg = { "-" }
+
+// Any valid snake-case identifier
+ident = @{ (("_" ~ ASCII_DIGIT?) | ASCII_ALPHA) ~ (ASCII_ALPHANUMERIC | "_")* }
+
+constant = _{ float | int | chr | str }
+    float = { decConst ~ "." ~ decConst }
+
+    int = { hexConst | octConst | binConst | decConst }
+
+    chr = ${ "'" ~ validChar ~ "'" }
+
+    str = ${ "\"" ~ inner ~ "\"" }
+
+    // The inner value of the string "<inner>"
+    inner = @{ validChar* }
+
+    // A valid string character
+    validChar = { 
+        !("\"" | "\\") ~ ANY
+        | "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t")
+        | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+    }
+
+hexConst = @{ "0h" ~ ASCII_HEX_DIGIT+ }
+octConst = @{ "0o" ~ ASCII_OCT_DIGIT+ }
+binConst = @{ "0b" ~ ASCII_BIN_DIGIT+ }
+decConst = @{ ASCII_DIGIT+ }
+
+// Comments start with --
+COMMENT = _{ "--" ~ (!"\n" ~ ANY)* }
+
+WHITESPACE = _{ " " | "\t" | NEWLINE }
