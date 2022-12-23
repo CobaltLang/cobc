@@ -1,7 +1,15 @@
 #[derive(Debug)]
 pub enum AstNode {
-    Stmnt(Stmnt),
-    Expr(Expr),
+    Block(Block),
+}
+
+// Basic unit of scope - Curly braces {}
+#[derive(Debug)]
+pub struct Block {
+    pub stmnts: Vec<Stmnt>,
+
+    // All blocks can end with an expression
+    pub expr: Option<Expr>,
 }
 
 #[derive(Debug)]
@@ -22,6 +30,8 @@ pub enum Stmnt {
 pub enum Expr {
     Const(Const),
     Ident(String),
+
+    Block(Box<Block>),
 
     UnaryOp {
         op: Op,

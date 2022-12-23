@@ -1,12 +1,9 @@
 pub mod ast;
+pub mod checks;
 
 extern crate pest;
 
-use pest::{
-    iterators::Pair,
-    pratt_parser::PrattParser,
-    Parser,
-};
+use pest::{iterators::Pair, pratt_parser::PrattParser, Parser};
 use pest_derive::Parser;
 
 use ast::*;
@@ -35,17 +32,13 @@ pub fn parse(source: &str) -> Vec<AstNode> {
 
     let mut nodes = Vec::new();
 
-    for pair in parsed {
-        //println!("{:?}", pair);
+    for block in parsed {
+        let block = CobaltParser::parse_block(block);
 
-        match pair.as_rule() {
-            Rule::stmnt => nodes.push(AstNode::Stmnt(CobaltParser::parse_stmnt(
-                pair.into_inner().next().unwrap(),
-            ))),
-            Rule::expr => nodes.push(AstNode::Expr(CobaltParser::parse_expr(pair))),
+        block.check_vars(&Vec::new());
+        block.check_types(&Vec::new(), None);
 
-            other => unreachable!("Parser expected statement or expr, found {:?}", other),
-        }
+        nodes.push(AstNode::Block(block))
     }
 
     nodes
@@ -56,6 +49,30 @@ pub fn parse(source: &str) -> Vec<AstNode> {
 pub struct CobaltParser;
 
 impl CobaltParser {
+    fn parse_block(block: Pair<Rule>) -> Block {
+        let inner = block.into_inner();
+
+        let mut parsed_block = Block {
+            stmnts: Vec::new(),
+            expr: None,
+        };
+
+        for pair in inner {
+            match pair.as_rule() {
+                Rule::stmnt => parsed_block
+                    .stmnts
+                    .push(CobaltParser::parse_stmnt(pair.into_inner().next().unwrap())),
+
+                // A lone expression will always mark the end of a block
+                Rule::expr => parsed_block.expr = Some(CobaltParser::parse_expr(pair)),
+
+                other => unreachable!("Parser expected statement or expr, found {:?}", other),
+            }
+        }
+
+        parsed_block
+    }
+
     fn parse_stmnt(stmnt: Pair<Rule>) -> Stmnt {
         match stmnt.as_rule() {
             Rule::declStmnt => {
@@ -100,13 +117,29 @@ impl CobaltParser {
     fn parse_expr(expr: Pair<Rule>) -> Expr {
         PRATT_PARSER
             .map_primary(|p| match p.as_rule() {
-                // Constants
+                // Evaluate the optional Expr at the end of the block
+                Rule::block => {
+                    // clone required
+                    let expr = p.clone().into_inner().last().unwrap();
 
+                    // Check the block ends with an expression
+                    match expr.as_rule() {
+                        Rule::expr => Expr::Block(Box::new(CobaltParser::parse_block(p))),
+
+                        other => {
+                            unreachable!("Parser expected expr at end of block, found {:?}", other)
+                        }
+                    }
+                }
+
+                Rule::expr => CobaltParser::parse_expr(p),
+
+                // Constants
                 Rule::float => Expr::Const(Const::Float(p.as_str().parse().unwrap())),
 
                 // 0b = binary | 0o = octal | 0h = hexadecimal
                 Rule::int => {
-                    let mut inner = p.into_inner().next().unwrap();
+                    let inner = p.into_inner().next().unwrap();
 
                     match inner.as_rule() {
                         Rule::decConst => Expr::Const(Const::Int(inner.as_str().parse().unwrap())),
@@ -115,23 +148,23 @@ impl CobaltParser {
                             let val = inner.as_str().strip_prefix("0h").unwrap();
 
                             Expr::Const(Const::Int(usize::from_str_radix(val, 16).unwrap()))
-                        },
+                        }
 
                         Rule::octConst => {
                             let val = inner.as_str().strip_prefix("0o").unwrap();
 
                             Expr::Const(Const::Int(usize::from_str_radix(val, 8).unwrap()))
-                        },
-                        
+                        }
+
                         Rule::binConst => {
                             let val = inner.as_str().strip_prefix("0b").unwrap();
 
                             Expr::Const(Const::Int(usize::from_str_radix(val, 2).unwrap()))
-                        },
+                        }
 
-                        other => unreachable!("Unknown constant prefix: {:?}", other), 
+                        other => unreachable!("Unknown constant prefix: {:?}", other),
                     }
-                },
+                }
 
                 // Chars and strings need to have their inner values parsed,
                 // this ignores the outer "" / ''
@@ -142,8 +175,8 @@ impl CobaltParser {
                     p.into_inner().next().unwrap().as_str().parse().unwrap(),
                 )),
 
-                Rule::expr => CobaltParser::parse_expr(p),
                 Rule::ident => Expr::Ident(p.as_str().to_owned()),
+
                 other => unreachable!("Parser expected atom, found {:?}", other),
             })
             .map_prefix(|op, rs| match op.as_rule() {

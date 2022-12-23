@@ -1,7 +1,10 @@
 // Useful for handling EOI
 file = {SOI ~ program ~ EOI }
 
-program = { (stmnt ~ ";")* ~ expr? }
+program = { block* }
+
+// Unit of scope
+block = { "{" ~ (stmnt ~ ";")* ~ expr? ~ "}" }
 
 stmnt = { declStmnt | assignStmnt }
     declStmnt = { ident ~ ":" ~ ident? ~ "=" ~ expr }
@@ -12,7 +15,7 @@ expr = { atom ~ (binOp ~ atom)* }
 
 atom = _{ unaryOp? ~ primary }
 
-primary = _{ constant | ident | "(" ~ expr ~ ")" }
+primary = _{ constant | ident | "(" ~ expr ~ ")" | block }
 
 binOp = _{ add | sub | mul | div }
     add = { "+" }
